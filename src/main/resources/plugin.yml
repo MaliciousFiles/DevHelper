@@ -1,0 +1,6 @@
+name: DevHelper
+version: '1.0'
+main: io.github.maliciousfiles.devHelper.DevHelper
+api-version: '1.21'
+authors: [ MaliciousFiles ]
+description: A spigot plugin to add a few helpful utilities for developers.
