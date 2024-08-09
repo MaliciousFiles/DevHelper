@@ -94,10 +94,8 @@ public class AutoReloader {
             lookupNames.setAccessible(true);
 
             Map<String, Plugin> value = (Map<String, Plugin>) lookupNames.get(manager);
-            System.out.println(value);
             value.remove(plugin.getName().toLowerCase());
             plugin.getDescription().getProvides().forEach(p -> value.remove(p.toLowerCase()));
-            System.out.println(value);
 
             Field plugins = manager.getClass().getDeclaredField("plugins");
             plugins.setAccessible(true);
@@ -108,12 +106,17 @@ public class AutoReloader {
             commandMap.setAccessible(true);
             Field knownCommands = SimpleCommandMap.class.getDeclaredField("knownCommands");
             knownCommands.setAccessible(true);
-            ((Map<String, Command>) knownCommands.get(commandMap.get(manager))).entrySet().removeIf(entry -> entry.getValue() instanceof PluginCommand command && command.getPlugin().equals(plugin));
+            Map<String, Command> map = (Map<String, Command>) knownCommands.get(commandMap.get(manager));
+            for (Map.Entry<String, Command> entry : List.copyOf(map.entrySet())) {
+                if (entry.getValue() instanceof PluginCommand pc && pc.getPlugin().equals(plugin)) map.remove(entry.getValue());
+            }
 
-            Field listenersField = manager.getClass().getDeclaredField("listeners");
-            listenersField.setAccessible(true);
-            Map<Event, SortedSet<RegisteredListener>> listeners = (Map<Event, SortedSet<RegisteredListener>>) listenersField.get(manager);
-            listeners.values().forEach(set -> set.removeIf(listener -> listener.getPlugin().equals(plugin)));
+            try {
+                Field listenersField = manager.getClass().getDeclaredField("listeners");
+                listenersField.setAccessible(true);
+                Map<Event, SortedSet<RegisteredListener>> listeners = (Map<Event, SortedSet<RegisteredListener>>) listenersField.get(manager);
+                listeners.values().forEach(set -> set.removeIf(listener -> listener.getPlugin().equals(plugin)));
+            } catch (NoSuchFieldException ignored) {}
 
             if (plugin.getClass().getClassLoader() instanceof URLClassLoader ucl) ucl.close();
 
