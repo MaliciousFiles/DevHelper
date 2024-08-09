@@ -108,7 +108,9 @@ public class AutoReloader {
             knownCommands.setAccessible(true);
             Map<String, Command> map = (Map<String, Command>) knownCommands.get(commandMap.get(manager));
             for (Map.Entry<String, Command> entry : List.copyOf(map.entrySet())) {
-                if (entry.getValue() instanceof PluginCommand pc && pc.getPlugin().equals(plugin)) map.remove(entry.getValue());
+                if (entry.getValue() instanceof PluginCommand pc && pc.getPlugin().equals(plugin)) {
+                    map.remove(entry.getKey());
+                }
             }
 
             try {

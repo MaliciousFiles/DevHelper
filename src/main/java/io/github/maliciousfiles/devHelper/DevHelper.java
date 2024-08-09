@@ -15,6 +15,8 @@ public final class DevHelper extends JavaPlugin {
         getCommand("console").setTabCompleter(new ConsoleGrabber());
 
         Bukkit.getScheduler().runTask(this, AutoReloader::init);
+
+        Bukkit.getOperators().forEach(op -> { if (op.isOnline()) op.getPlayer().performCommand("console WARN"); });
     }
 
     @Override
