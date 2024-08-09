@@ -191,6 +191,7 @@ public class AutoReloader {
                 byte[] hash = hash(file);
                 if (!Arrays.equals(hash, md5Hashes.get(file))) {
                     log("§6Reloading §b%s".formatted(plugin.getName()));
+                    md5Hashes.put(file, hash(file));
 
                     unload(plugin);
                     try {
