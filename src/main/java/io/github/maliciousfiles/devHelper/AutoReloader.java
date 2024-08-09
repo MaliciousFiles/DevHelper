@@ -8,6 +8,7 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.craftbukkit.v1_21_R1.CraftServer;
 import org.bukkit.event.Event;
+import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -113,12 +114,7 @@ public class AutoReloader {
                 }
             }
 
-            try {
-                Field listenersField = manager.getClass().getDeclaredField("listeners");
-                listenersField.setAccessible(true);
-                Map<Event, SortedSet<RegisteredListener>> listeners = (Map<Event, SortedSet<RegisteredListener>>) listenersField.get(manager);
-                listeners.values().forEach(set -> set.removeIf(listener -> listener.getPlugin().equals(plugin)));
-            } catch (NoSuchFieldException ignored) {}
+            HandlerList.unregisterAll(plugin);
 
             if (plugin.getClass().getClassLoader() instanceof URLClassLoader ucl) ucl.close();
 
