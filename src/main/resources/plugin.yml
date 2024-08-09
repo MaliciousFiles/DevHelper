@@ -4,3 +4,8 @@ main: io.github.maliciousfiles.devHelper.DevHelper
 api-version: '1.21'
 authors: [ MaliciousFiles ]
 description: A spigot plugin to add a few helpful utilities for developers.
+commands:
+  console:
+    description: Set the level of the in-game console log.
+    usage: /console <level>
+    permission: op
