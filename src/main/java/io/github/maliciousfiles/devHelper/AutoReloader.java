@@ -1,6 +1,7 @@
 package io.github.maliciousfiles.devHelper;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Keyed;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.v1_21_R1.CraftServer;
 import org.bukkit.plugin.*;
@@ -11,6 +12,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -71,24 +74,70 @@ public class AutoReloader {
 
         Bukkit.getPluginManager().disablePlugin(plugin);
 
-        SimplePluginManager manager = (SimplePluginManager) Bukkit.getPluginManager();
+        Object manager = Bukkit.getPluginManager();
+        try {
+            Field paperPluginManager = Bukkit.getServer().getClass().getDeclaredField("paperPluginManager");
+            paperPluginManager.setAccessible(true);
+            manager = paperPluginManager.get(Bukkit.getServer());
+
+            Field instanceManager = manager.getClass().getDeclaredField("instanceManager");
+            instanceManager.setAccessible(true);
+            manager = instanceManager.get(manager);
+        } catch (Throwable ignored) {}
+
         try {
             Field lookupNames = manager.getClass().getDeclaredField("lookupNames");
             lookupNames.setAccessible(true);
 
             Map<String, Plugin> value = (Map<String, Plugin>) lookupNames.get(manager);
-            value.remove(plugin.getName());
-            plugin.getDescription().getProvides().forEach(value::remove);
+            System.out.println(value);
+            value.remove(plugin.getName().toLowerCase());
+            plugin.getDescription().getProvides().forEach(p -> value.remove(p.toLowerCase()));
+            System.out.println(value);
 
             Field plugins = manager.getClass().getDeclaredField("plugins");
             plugins.setAccessible(true);
-
-            ((List<Plugin>) plugins.get(manager)).remove(plugin);
+            List<Plugin> list = (List<Plugin>) plugins.get(manager);
+            list.remove(plugin);
 
             if (plugin.getClass().getClassLoader() instanceof URLClassLoader ucl) ucl.close();
-        } catch (NoSuchFieldException | IllegalAccessException | IOException e) {
+
+            if (manager.getClass().getSimpleName().contains("Paper")) {
+                Class<?> clazz = Class.forName("io.papermc.paper.plugin.entrypoint.LaunchEntryPointHandler");
+                Object instance = clazz.getDeclaredField("INSTANCE").get(null);
+                Object storage = clazz.getDeclaredMethod("get", Class.forName("io.papermc.paper.plugin.entrypoint.Entrypoint")).invoke(instance, Class.forName("io.papermc.paper.plugin.entrypoint.Entrypoint").getField("PLUGIN").get(null));
+                Field providersField = Class.forName("io.papermc.paper.plugin.storage.SimpleProviderStorage").getDeclaredField("providers");
+                providersField.setAccessible(true);
+                List providers = (List) providersField.get(storage);
+                providers.removeIf(obj -> {
+                    try {
+                        Object meta = Class.forName("io.papermc.paper.plugin.provider.PluginProvider")
+                                .getDeclaredMethod("getMeta").invoke(obj);
+                        Method getName = Class.forName("io.papermc.paper.plugin.configuration.PluginMeta")
+                                .getDeclaredMethod("getName");
+                        getName.setAccessible(true);
+                        return getName.invoke(meta).equals(plugin.getName());
+                    } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException |
+                             ClassNotFoundException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            }
+        } catch (NoSuchFieldException | IllegalAccessException | IOException | ClassNotFoundException |
+                 NoSuchMethodException | InvocationTargetException e) {
             throw new RuntimeException(e);
         }
+
+        Bukkit.getBossBars().forEachRemaining(b -> {
+            if (b.getKey().getNamespace().equalsIgnoreCase(plugin.getName())) {
+                Bukkit.removeBossBar(b.getKey());
+            }
+        });
+        Bukkit.recipeIterator().forEachRemaining(r -> {
+            if (r instanceof Keyed keyed && keyed.getKey().getNamespace().equalsIgnoreCase(plugin.getName())) {
+                Bukkit.removeRecipe(keyed.getKey());
+            }
+        });
 
         ((CraftServer) Bukkit.getServer()).syncCommands();
 
