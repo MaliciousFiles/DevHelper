@@ -2,8 +2,12 @@ package io.github.maliciousfiles.devHelper;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Keyed;
+import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.craftbukkit.v1_21_R1.CraftServer;
+import org.bukkit.event.Event;
 import org.bukkit.plugin.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -99,6 +103,17 @@ public class AutoReloader {
             plugins.setAccessible(true);
             List<Plugin> list = (List<Plugin>) plugins.get(manager);
             list.remove(plugin);
+
+            Field commandMap = manager.getClass().getDeclaredField("commandMap");
+            commandMap.setAccessible(true);
+            Field knownCommands = SimpleCommandMap.class.getDeclaredField("knownCommands");
+            knownCommands.setAccessible(true);
+            ((Map<String, Command>) knownCommands.get(commandMap.get(manager))).entrySet().removeIf(entry -> entry.getValue() instanceof PluginCommand command && command.getPlugin().equals(plugin));
+
+            Field listenersField = manager.getClass().getDeclaredField("listeners");
+            listenersField.setAccessible(true);
+            Map<Event, SortedSet<RegisteredListener>> listeners = (Map<Event, SortedSet<RegisteredListener>>) listenersField.get(manager);
+            listeners.values().forEach(set -> set.removeIf(listener -> listener.getPlugin().equals(plugin)));
 
             if (plugin.getClass().getClassLoader() instanceof URLClassLoader ucl) ucl.close();
 
