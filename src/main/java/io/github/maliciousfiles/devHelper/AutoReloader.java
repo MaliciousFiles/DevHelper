@@ -78,6 +78,7 @@ public class AutoReloader {
         if (plugin == null) return;
 
         Bukkit.getPluginManager().disablePlugin(plugin);
+        plugin.onDisable();
 
         Object manager = Bukkit.getPluginManager();
         try {
