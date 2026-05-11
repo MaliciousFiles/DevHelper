@@ -29,6 +29,11 @@ public class ConsoleGrabber /*extends Handler*/ implements CommandExecutor, TabC
 
     private static final Map<UUID, ConsoleFilter> filters = new HashMap<>();
 
+    public static void autoSubscribe(Player player) {
+        if (filters.containsKey(player.getUniqueId())) return;
+        player.performCommand("console WARN");
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (sender instanceof Player player) {

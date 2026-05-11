@@ -1,7 +1,12 @@
 package io.github.maliciousfiles.devHelper;
 
+import com.mojang.brigadier.tree.CommandNode;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.server.MinecraftServer;
 import org.bukkit.Bukkit;
 import org.bukkit.Keyed;
+import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
@@ -20,9 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
+import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -69,13 +72,46 @@ public class AutoReloader {
         plugin.onLoad();
         Bukkit.getPluginManager().enablePlugin(plugin);
 
+        try {
+            Class<?> type = Class.forName("io.papermc.paper.plugin.lifecycle.event.LifecycleEventRunner");
+            Class<Enum> cause = (Class<Enum>) Class.forName("io.papermc.paper.plugin.lifecycle.event.registrar.ReloadableRegistrarEvent$Cause");
+            Object runner = type.getDeclaredField("INSTANCE").get(null);
+            Object commands = Class.forName("io.papermc.paper.command.brigadier.PaperCommands").getDeclaredField("INSTANCE").get(null);
+            commands.getClass().getDeclaredMethod("setValid").invoke(commands);
+            type.getDeclaredMethod("callReloadableRegistrarEvent",
+                    Class.forName("io.papermc.paper.plugin.lifecycle.event.types.LifecycleEventType"),
+                    Class.forName("io.papermc.paper.plugin.lifecycle.event.registrar.PaperRegistrar"),
+                    Class.class,
+                    cause)
+                    .invoke(runner,
+                            Class.forName("io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents").getDeclaredField("COMMANDS").get(null),
+                            commands,
+                            plugin.getClass(),
+                            Enum.valueOf(cause, "RELOAD"));
+        } catch (Throwable _) {}
+
         ((CraftServer) Bukkit.getServer()).syncCommands();
+
 
         return plugin;
     }
 
     private static void unload(Plugin plugin) {
         if (plugin == null) return;
+
+        try {
+            URLClassLoader loader = new URLClassLoader(((URLClassLoader) plugin.getClass().getClassLoader()).getURLs());
+            Field field = Bukkit.class.getClassLoader().loadClass("org.bukkit.plugin.java.PluginClassLoader").getDeclaredField("classes");
+            field.setAccessible(true);
+            Map<String, Class<?>> classes = (Map<String, Class<?>>) field.get(plugin.getClass().getClassLoader());
+            for (String name : classes.keySet()) {
+                try {
+                    classes.put(name, loader.loadClass(name));
+                } catch (NoClassDefFoundError _) {}
+            }
+        } catch (NoSuchFieldException | ClassNotFoundException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
 
         Bukkit.getPluginManager().disablePlugin(plugin);
         plugin.onDisable();
@@ -92,6 +128,17 @@ public class AutoReloader {
         } catch (Throwable ignored) {}
 
         try {
+            Field commandMap = manager.getClass().getDeclaredField("commandMap");
+            commandMap.setAccessible(true);
+            Field knownCommands = SimpleCommandMap.class.getDeclaredField("knownCommands");
+            knownCommands.setAccessible(true);
+            Map<String, Command> map = (Map<String, Command>) knownCommands.get(commandMap.get(manager));
+            for (Map.Entry<String, Command> entry : List.copyOf(map.entrySet())) {
+                if (entry.getValue() instanceof PluginCommand pc && pc.getPlugin().equals(plugin)) {
+                    map.remove(entry.getKey());
+                }
+            }
+
             Field lookupNames = manager.getClass().getDeclaredField("lookupNames");
             lookupNames.setAccessible(true);
 
@@ -103,17 +150,6 @@ public class AutoReloader {
             plugins.setAccessible(true);
             List<Plugin> list = (List<Plugin>) plugins.get(manager);
             list.remove(plugin);
-
-            Field commandMap = manager.getClass().getDeclaredField("commandMap");
-            commandMap.setAccessible(true);
-            Field knownCommands = SimpleCommandMap.class.getDeclaredField("knownCommands");
-            knownCommands.setAccessible(true);
-            Map<String, Command> map = (Map<String, Command>) knownCommands.get(commandMap.get(manager));
-            for (Map.Entry<String, Command> entry : List.copyOf(map.entrySet())) {
-                if (entry.getValue() instanceof PluginCommand pc && pc.getPlugin().equals(plugin)) {
-                    map.remove(entry.getKey());
-                }
-            }
 
             HandlerList.unregisterAll(plugin);
 
@@ -155,6 +191,13 @@ public class AutoReloader {
                 Bukkit.removeRecipe(keyed.getKey());
             }
         });
+
+        Commands commands = ((CraftServer) plugin.getServer()).getServer().resources.managers().getCommands();
+        for (CommandNode<CommandSourceStack> c : List.copyOf(commands.getDispatcher().getRoot().getChildren())) {
+            if (!c.getName().startsWith(plugin.getName().toLowerCase()+":")) continue;
+            commands.getDispatcher().getRoot().removeCommand(c.getName());
+            commands.getDispatcher().getRoot().removeCommand(c.getName().substring(c.getName().indexOf(':')+1));
+        }
 
         ((CraftServer) Bukkit.getServer()).syncCommands();
 
