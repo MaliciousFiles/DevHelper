@@ -29,6 +29,7 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 
 import static java.nio.file.StandardWatchEventKinds.*;
@@ -100,21 +101,15 @@ public class AutoReloader {
         if (plugin == null) return;
 
         try {
-            URLClassLoader loader = new URLClassLoader(((URLClassLoader) plugin.getClass().getClassLoader()).getURLs());
-            Field field = Bukkit.class.getClassLoader().loadClass("org.bukkit.plugin.java.PluginClassLoader").getDeclaredField("classes");
-            field.setAccessible(true);
-            Map<String, Class<?>> classes = (Map<String, Class<?>>) field.get(plugin.getClass().getClassLoader());
-            for (String name : classes.keySet()) {
-                try {
-                    classes.put(name, loader.loadClass(name));
-                } catch (NoClassDefFoundError _) {}
-            }
-        } catch (NoSuchFieldException | ClassNotFoundException | IllegalAccessException e) {
+            Field jar = Bukkit.class.getClassLoader().loadClass("org.bukkit.plugin.java.PluginClassLoader").getDeclaredField("jar");
+            Field file = Bukkit.class.getClassLoader().loadClass("org.bukkit.plugin.java.PluginClassLoader").getDeclaredField("file");
+            jar.setAccessible(true);
+            file.setAccessible(true);
+            jar.set(plugin.getClass().getClassLoader(), new JarFile((File) file.get(plugin.getClass().getClassLoader())));
+        } catch (NoSuchFieldException | ClassNotFoundException | IllegalAccessException | IOException e) {
             throw new RuntimeException(e);
         }
-
         Bukkit.getPluginManager().disablePlugin(plugin);
-        plugin.onDisable();
 
         Object manager = Bukkit.getPluginManager();
         try {
@@ -235,7 +230,7 @@ public class AutoReloader {
 
                     unload(plugin);
                     try {
-                        load(file);
+                        pluginFiles.put(file, load(file));
                     } catch (InvalidPluginException | InvalidDescriptionException e) { continue; }
                 }
             }
